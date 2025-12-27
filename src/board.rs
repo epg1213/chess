@@ -1,10 +1,10 @@
 use std::fmt::Display;
-
-use crate::pieces::{Piece, Color, PieceType};
+use crate::pieces::*;
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct Square {
-    piece: Option<Piece>,
+    piece: Option<Arc<dyn ChessPiece>>,
     pawn_trace: bool,
     name: String,
     x: usize,
@@ -34,81 +34,86 @@ pub struct Board {
     squares: Vec<Square>
 }
 
+pub enum BoardError {
+    OutOfBoardSquare
+}
+
 impl Board {
     pub fn new() -> Self {
-        let mut squares = Vec::<Square>::new();
-        let chars = "ABCDEFGH";
-        let nums = "12345678";
+        let mut squares = vec![];
         for x in 0..8 { for y in 0..8 {
-            squares.push(Square{
-                piece: None,
-                pawn_trace: false,
-                name: format!("{}{}",
-                    chars.chars().nth(x).unwrap_or(' '),
-                    nums.chars().nth(y).unwrap_or(' ')),
-                x: x,
-                y: y
-            });
+            let name = format!("{}{}", "ABCDEFGH".chars().nth(x).unwrap_or(' '),
+                                       "12345678".chars().nth(y).unwrap_or(' '));
+            squares.push(Square{ piece: None, pawn_trace: false, x, y, name });
         }}
-        Self { squares: squares }
+        Self { squares }
     }
 
-    pub fn square_mut(&mut self, square_name: impl AsRef<str>) -> Option<&mut Square> {
+    pub fn square_mut(&mut self, square_name: impl AsRef<str>) -> Result<&mut Square, BoardError> {
         for sq in self.squares.iter_mut() {
             if sq.name.as_str() == square_name.as_ref() {
-                return Some(sq);
+                return Ok(sq);
             }
         }
-        None
+        Err(BoardError::OutOfBoardSquare)
     }
-    pub fn square_as_ref(&self, square_name: impl AsRef<str>) -> Option<&Square> {
+    pub fn square_as_ref(&self, square_name: impl AsRef<str>) -> Result<&Square, BoardError> {
         for sq in self.squares.iter() {
             if sq.name.as_str() == square_name.as_ref() {
-                return Some(sq);
+                return Ok(sq);
             }
         }
-        None
+        Err(BoardError::OutOfBoardSquare)
     }
-    pub fn put(&mut self, square_name: impl AsRef<str>, piece: Piece) {
-        match self.square_mut(square_name) {
-            Some(sq) => sq.piece=Some(piece),
-            None => {}
-        }
+    pub fn get_piece(&self, square_name: impl AsRef<str>) -> Result<Option<Arc<dyn ChessPiece>>, BoardError> {
+        Ok(self.square_as_ref(square_name)?.piece.clone())
     }
-    pub fn default() -> Self {
+    pub fn put(&mut self, square_name: impl AsRef<str>, piece: Option<Arc<dyn ChessPiece>>) -> Result<(), BoardError> {
+        self.square_mut(square_name)?.piece=piece;
+        Ok(())
+    }
+    pub fn move_piece(&mut self, from_sq_name: impl AsRef<str>, to_sq_name: impl AsRef<str>) -> Result<(), BoardError> {
+        self.put(to_sq_name, self.get_piece(from_sq_name.as_ref())?)?;
+        self.put(from_sq_name, None)?;
+        Ok(())
+    }
+}
+
+impl Default for Board {
+    fn default() -> Self {
         let mut board = Board::new();
-        board.put("A2", Piece::new(Color::White, PieceType::Pawn));
-        board.put("B2", Piece::new(Color::White, PieceType::Pawn));
-        board.put("C2", Piece::new(Color::White, PieceType::Pawn));
-        board.put("D2", Piece::new(Color::White, PieceType::Pawn));
-        board.put("E2", Piece::new(Color::White, PieceType::Pawn));
-        board.put("F2", Piece::new(Color::White, PieceType::Pawn));
-        board.put("G2", Piece::new(Color::White, PieceType::Pawn));
-        board.put("H2", Piece::new(Color::White, PieceType::Pawn));
-        board.put("A7", Piece::new(Color::Black, PieceType::Pawn));
-        board.put("B7", Piece::new(Color::Black, PieceType::Pawn));
-        board.put("C7", Piece::new(Color::Black, PieceType::Pawn));
-        board.put("D7", Piece::new(Color::Black, PieceType::Pawn));
-        board.put("E7", Piece::new(Color::Black, PieceType::Pawn));
-        board.put("F7", Piece::new(Color::Black, PieceType::Pawn));
-        board.put("G7", Piece::new(Color::Black, PieceType::Pawn));
-        board.put("H7", Piece::new(Color::Black, PieceType::Pawn));
-        board.put("A1", Piece::new(Color::White, PieceType::Rook));
-        board.put("H1", Piece::new(Color::White, PieceType::Rook));
-        board.put("A8", Piece::new(Color::Black, PieceType::Rook));
-        board.put("H8", Piece::new(Color::Black, PieceType::Rook));
-        board.put("B1", Piece::new(Color::White, PieceType::Knight));
-        board.put("G1", Piece::new(Color::White, PieceType::Knight));
-        board.put("B8", Piece::new(Color::Black, PieceType::Knight));
-        board.put("G8", Piece::new(Color::Black, PieceType::Knight));
-        board.put("C1", Piece::new(Color::White, PieceType::Bishop));
-        board.put("F1", Piece::new(Color::White, PieceType::Bishop));
-        board.put("C8", Piece::new(Color::Black, PieceType::Bishop));
-        board.put("F8", Piece::new(Color::Black, PieceType::Bishop));
-        board.put("D1", Piece::new(Color::White, PieceType::Queen));
-        board.put("D8", Piece::new(Color::Black, PieceType::Queen));
-        board.put("E1", Piece::new(Color::White, PieceType::King));
-        board.put("E8", Piece::new(Color::Black, PieceType::King));
+        let _ = board.put("A2", Some(Arc::new(pawn::Pawn::white())));
+        let _ = board.put("B2", Some(Arc::new(pawn::Pawn::white())));
+        let _ = board.put("C2", Some(Arc::new(pawn::Pawn::white())));
+        let _ = board.put("D2", Some(Arc::new(pawn::Pawn::white())));
+        let _ = board.put("E2", Some(Arc::new(pawn::Pawn::white())));
+        let _ = board.put("F2", Some(Arc::new(pawn::Pawn::white())));
+        let _ = board.put("G2", Some(Arc::new(pawn::Pawn::white())));
+        let _ = board.put("H2", Some(Arc::new(pawn::Pawn::white())));
+        let _ = board.put("A7", Some(Arc::new(pawn::Pawn::black())));
+        let _ = board.put("B7", Some(Arc::new(pawn::Pawn::black())));
+        let _ = board.put("C7", Some(Arc::new(pawn::Pawn::black())));
+        let _ = board.put("D7", Some(Arc::new(pawn::Pawn::black())));
+        let _ = board.put("E7", Some(Arc::new(pawn::Pawn::black())));
+        let _ = board.put("F7", Some(Arc::new(pawn::Pawn::black())));
+        let _ = board.put("G7", Some(Arc::new(pawn::Pawn::black())));
+        let _ = board.put("H7", Some(Arc::new(pawn::Pawn::black())));
+        let _ = board.put("A1", Some(Arc::new(rook::Rook::white())));
+        let _ = board.put("H1", Some(Arc::new(rook::Rook::white())));
+        let _ = board.put("A8", Some(Arc::new(rook::Rook::black())));
+        let _ = board.put("H8", Some(Arc::new(rook::Rook::black())));
+        let _ = board.put("B1", Some(Arc::new(knight::Knight::white())));
+        let _ = board.put("G1", Some(Arc::new(knight::Knight::white())));
+        let _ = board.put("B8", Some(Arc::new(knight::Knight::black())));
+        let _ = board.put("G8", Some(Arc::new(knight::Knight::black())));
+        let _ = board.put("C1", Some(Arc::new(bishop::Bishop::white())));
+        let _ = board.put("F1", Some(Arc::new(bishop::Bishop::white())));
+        let _ = board.put("C8", Some(Arc::new(bishop::Bishop::black())));
+        let _ = board.put("F8", Some(Arc::new(bishop::Bishop::black())));
+        let _ = board.put("D1", Some(Arc::new(queen::Queen::white())));
+        let _ = board.put("D8", Some(Arc::new(queen::Queen::black())));
+        let _ = board.put("E1", Some(Arc::new(king::King::white())));
+        let _ = board.put("E8", Some(Arc::new(king::King::black())));
         board
     }
 }
